@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Inloggen · Servermonitor</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="login-wrap">
+    <form class="card login" method="post" action="/login">
+      <h1>Servermonitor</h1>
+      <p>Log in om het dashboard te bekijken.</p>
+      <div class="error" id="error" role="alert"></div>
+      <label class="field">
+        <span>Gebruikersnaam</span>
+        <input name="username" autocomplete="username" required autofocus>
+      </label>
+      <label class="field">
+        <span>Wachtwoord</span>
+        <input name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <button class="btn-primary" type="submit">Inloggen</button>
+    </form>
+  </main>
+  <script src="/static/login.js"></script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Servermonitor</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="topbar">
+      <div>
+        <h1 id="hostname">Servermonitor</h1>
+        <div class="sub" id="sysinfo">&nbsp;</div>
+      </div>
+      <div class="topbar-right">
+        <span class="live" id="live"><span class="live-dot"></span><span id="live-text">Live</span></span>
+        <form method="post" action="/logout"><button class="btn-ghost" type="submit">Uitloggen</button></form>
+      </div>
+    </header>
+
+    <section class="tiles">
+      <article class="card tile" id="tile-cpu">
+        <div class="tile-head">
+          <span class="tile-label"><span class="swatch" style="background:var(--series-cpu)"></span>CPU</span>
+          <span class="status"></span>
+        </div>
+        <div class="tile-value">–</div>
+        <div class="tile-detail"></div>
+        <div class="meter"><div class="meter-fill" style="background:var(--series-cpu)"></div></div>
+      </article>
+      <article class="card tile" id="tile-mem">
+        <div class="tile-head">
+          <span class="tile-label"><span class="swatch" style="background:var(--series-mem)"></span>RAM</span>
+          <span class="status"></span>
+        </div>
+        <div class="tile-value">–</div>
+        <div class="tile-detail"></div>
+        <div class="meter"><div class="meter-fill" style="background:var(--series-mem)"></div></div>
+      </article>
+      <article class="card tile" id="tile-disk">
+        <div class="tile-head">
+          <span class="tile-label"><span class="swatch" style="background:var(--series-disk)"></span>Opslag</span>
+          <span class="status"></span>
+        </div>
+        <div class="tile-value">–</div>
+        <div class="tile-detail"></div>
+        <div class="meter"><div class="meter-fill" style="background:var(--series-disk)"></div></div>
+      </article>
+    </section>
+
+    <div class="section-head">
+      <h2>Verloop</h2>
+      <div class="ranges" role="group" aria-label="Periode">
+        <button type="button" data-range="1h">1 uur</button>
+        <button type="button" data-range="6h">6 uur</button>
+        <button type="button" data-range="24h">24 uur</button>
+        <button type="button" data-range="7d">7 dagen</button>
+        <button type="button" data-range="30d">30 dagen</button>
+      </div>
+    </div>
+
+    <section class="charts">
+      <article class="card chart-card">
+        <div class="chart-title">
+          <h3><span class="swatch" style="background:var(--series-cpu)"></span>CPU-gebruik</h3>
+          <span class="stats" id="stats-cpu"></span>
+        </div>
+        <div class="chart-box"><canvas id="chart-cpu" aria-label="CPU-gebruik over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
+      </article>
+      <article class="card chart-card">
+        <div class="chart-title">
+          <h3><span class="swatch" style="background:var(--series-mem)"></span>RAM-gebruik</h3>
+          <span class="stats" id="stats-mem"></span>
+        </div>
+        <div class="chart-box"><canvas id="chart-mem" aria-label="RAM-gebruik over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
+      </article>
+      <article class="card chart-card">
+        <div class="chart-title">
+          <h3><span class="swatch" style="background:var(--series-disk)"></span>Opslaggebruik</h3>
+          <span class="stats" id="stats-disk"></span>
+        </div>
+        <div class="chart-box"><canvas id="chart-disk" aria-label="Opslaggebruik over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
+      </article>
+    </section>
+
+    <p class="footer-info" id="footer-info"></p>
+  </div>
+
+  <script src="/static/chart.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
