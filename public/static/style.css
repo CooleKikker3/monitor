@@ -292,3 +292,63 @@ table.projects { width: 100%; border-collapse: collapse; font-size: 14px; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 8px; font-size: 13px; color: var(--text-2); }
 .legend:empty { display: none; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ---------- Tabs ---------- */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: -8px 0 24px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  color: var(--text-2);
+  text-decoration: none;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.tabs a:hover { color: var(--text); }
+.tabs a[aria-selected="true"] { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+.tab-alert { display: inline-flex; color: var(--critical-text); }
+.tab-alert svg { width: 14px; height: 14px; }
+
+/* ---------- Project view ---------- */
+
+.project-head { margin-bottom: 16px; }
+.project-head h2 { font-size: 20px; margin: 0; display: flex; align-items: center; gap: 10px; }
+.project-head .swatch { width: 12px; height: 12px; }
+.project-head .sub { color: var(--text-2); font-size: 14px; margin-top: 4px; }
+.project-head .sub a { color: inherit; }
+
+.tiles-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.tile.compact { padding: 16px 18px; }
+.tile.compact .tile-value { font-size: 26px; min-height: 29px; }
+.tile.compact .tile-value small { font-size: 15px; }
+.tile.compact .tile-detail { font-size: 12px; }
+.tile-line { margin-top: 6px; }
+.commit-title {
+  display: block;
+  font-size: 15px; font-weight: 600; line-height: 1.35;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding-top: 6px;
+}
+
+.projects a.name { color: var(--text); text-decoration: none; }
+.projects a.name:hover { text-decoration: underline; }
+.projects .sub .badge { margin-right: 4px; }
+
+@media (max-width: 1000px) {
+  .tiles-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .tiles-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .tile.compact { padding: 12px 14px; }
+  .tile.compact .tile-value { font-size: 22px; }
+}

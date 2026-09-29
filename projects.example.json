@@ -4,9 +4,10 @@
     "label": "Auto Reserveerapp-API",
     "type": "laravel",
     "domain": "autoapp.coenvink.com",
+    "url": "https://autoapp.coenvink.com/up",
     "dir": "/var/www/upmanager-api",
     "pool": "upmanager",
-    "accessLog": "/var/log/nginx/upmanager.access.log"
+    "accessLog": "/var/log/nginx/upmanager-api.access.log"
   },
   {
     "name": "monitor",
@@ -14,7 +15,9 @@
     "type": "node",
     "domain": "monitor.coenvink.com",
     "dir": "/var/www/monitor",
-    "services": ["monitor"],
+    "services": [
+      "monitor"
+    ],
     "accessLog": "/var/log/nginx/monitor.access.log"
   }
 ]

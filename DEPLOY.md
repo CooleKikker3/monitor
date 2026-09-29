@@ -251,9 +251,10 @@ nano /var/www/monitor/projects.json
     "label": "Auto Reserveerapp-API",
     "type": "laravel",
     "domain": "autoapp.coenvink.com",
+    "url": "https://autoapp.coenvink.com/up",
     "dir": "/var/www/upmanager-api",
     "pool": "upmanager",
-    "accessLog": "/var/log/nginx/upmanager.access.log"
+    "accessLog": "/var/log/nginx/upmanager-api.access.log"
   },
   {
     "name": "monitor",
@@ -273,6 +274,7 @@ nano /var/www/monitor/projects.json
 | `label` | De naam in het dashboard |
 | `type` | `laravel`, `php`, `node` of `static`. Dit is alleen een label. Wat er gemeten wordt, hangt af van de velden hieronder. |
 | `domain` | Voor de bereikbaarheidscheck (elke minuut) en de certificaatcheck (elke 6 uur) |
+| `url` | Optioneel: een eigen adres voor de bereikbaarheidscheck, zoals `/up` bij Laravel. Standaard `https://<domain>/`. |
 | `dir` | Voor de schijfruimte (elk uur) en de laatste commit (elke 5 minuten) |
 | `pool` | Naam van de PHP-FPM-pool: CPU en RAM van de PHP-processen |
 | `services` | Systemd-services van het project, zoals een Node-app of een Laravel-queueworker: CPU en RAM |
@@ -296,13 +298,17 @@ Na een wijziging in `projects.json` is altijd een `systemctl restart monitor` no
 Draai de controles als `www-data`, de gebruiker waaronder de monitor draait:
 
 ```bash
-sudo -u www-data head -n 1 /var/log/nginx/upmanager.access.log
+sudo -u www-data head -n 1 /var/log/nginx/upmanager-api.access.log
 sudo -u www-data cat /sys/fs/cgroup/system.slice/monitor.service/memory.stat | head -n 2
+sudo -u www-data ls /etc/letsencrypt/renewal/
 ```
 
-Geven beide uitvoer, dan werkt het. Toont het dashboard een streepje (–) bij de verzoeken,
+Geven alle drie uitvoer, dan werkt het. Toont het dashboard een streepje (–) bij de verzoeken,
 dan kan `www-data` die log niet lezen, of klopt het pad in `accessLog` niet. Een streepje bij
-CPU en RAM betekent dat de pool- of servicenaam niet klopt.
+CPU en RAM betekent dat de pool- of servicenaam niet klopt. Staat er "Auto-renew onbekend",
+dan kan `www-data` de map `/etc/letsencrypt/renewal/` niet lezen. Zet die dan open met
+`chmod 755 /etc/letsencrypt/renewal`. De bestanden daarin bevatten geen sleutels. De
+privésleutels staan in `live/` en `archive/`, en die blijven dicht.
 
 ## Wat de cijfers betekenen
 
@@ -315,8 +321,12 @@ CPU en RAM betekent dat de pool- of servicenaam niet klopt.
   project zie je dus 0 MB en 0%. Een worker die tussen twee metingen (5 seconden) start en weer
   stopt, telt niet mee. De CPU van PHP is daarom een ondergrens.
 * **Verzoeken** zijn alle regels in de nginx-log, dus ook plaatjes, CSS en bots.
-* **Bereikbaar** betekent dat het domein met een statuscode onder de 500 antwoordt. Een 404 op
-  de hoofdpagina van een API is dus gewoon "Online".
+* **Bereikbaar**: zonder `url` telt elke statuscode onder de 500 als online. Een 404 op de
+  hoofdpagina van een API is dus gewoon "Online". Met een eigen `url` moet het antwoord 2xx
+  of 3xx zijn. Zo'n adres is er juist om te zeggen of de app gezond is.
+* **Auto-renew** krijgt een vinkje als het certificaat van certbot komt (er staat een
+  bestand voor in `/etc/letsencrypt/renewal/`) en de certbot-timer actief is. Houd je muis
+  op een kruisje om de reden te zien.
 
 # Wat de monitor meet
 

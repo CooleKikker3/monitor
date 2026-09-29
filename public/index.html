@@ -20,116 +20,161 @@
       </div>
     </header>
 
-    <section class="tiles">
-      <article class="card tile" id="tile-cpu">
-        <div class="tile-head">
-          <span class="tile-label"><span class="swatch" style="background:var(--series-cpu)"></span>CPU</span>
-          <span class="status"></span>
-        </div>
-        <div class="tile-value">–</div>
-        <div class="tile-detail"></div>
-        <div class="meter"><div class="meter-fill" style="background:var(--series-cpu)"></div></div>
-      </article>
-      <article class="card tile" id="tile-mem">
-        <div class="tile-head">
-          <span class="tile-label"><span class="swatch" style="background:var(--series-mem)"></span>RAM</span>
-          <span class="status"></span>
-        </div>
-        <div class="tile-value">–</div>
-        <div class="tile-detail"></div>
-        <div class="meter"><div class="meter-fill" style="background:var(--series-mem)"></div></div>
-      </article>
-      <article class="card tile" id="tile-disk">
-        <div class="tile-head">
-          <span class="tile-label"><span class="swatch" style="background:var(--series-disk)"></span>Opslag</span>
-          <span class="status"></span>
-        </div>
-        <div class="tile-value">–</div>
-        <div class="tile-detail"></div>
-        <div class="meter"><div class="meter-fill" style="background:var(--series-disk)"></div></div>
-      </article>
-    </section>
+    <nav class="tabs" id="tabs" aria-label="Weergave" hidden></nav>
 
-    <section id="projects-section" hidden>
-      <div class="section-head"><h2>Projecten</h2></div>
-      <div class="card table-card">
-        <div class="table-scroll">
-          <table class="projects">
-            <thead>
-              <tr>
-                <th>Project</th>
-                <th>Status</th>
-                <th class="num">CPU</th>
-                <th class="num">RAM</th>
-                <th class="num">Verzoeken/min</th>
-                <th class="num">5xx-fouten (1 uur)</th>
-                <th class="num">Opslag</th>
-                <th>Certificaat</th>
-                <th>Laatste versie</th>
-              </tr>
-            </thead>
-            <tbody id="projects-body"></tbody>
-          </table>
+    <!-- ========== Overzicht ========== -->
+    <div id="view-overview">
+      <section class="tiles">
+        <article class="card tile" id="tile-cpu">
+          <div class="tile-head">
+            <span class="tile-label"><span class="swatch" style="background:var(--series-cpu)"></span>CPU</span>
+            <span class="status"></span>
+          </div>
+          <div class="tile-value">–</div>
+          <div class="tile-detail"></div>
+          <div class="meter"><div class="meter-fill" style="background:var(--series-cpu)"></div></div>
+        </article>
+        <article class="card tile" id="tile-mem">
+          <div class="tile-head">
+            <span class="tile-label"><span class="swatch" style="background:var(--series-mem)"></span>RAM</span>
+            <span class="status"></span>
+          </div>
+          <div class="tile-value">–</div>
+          <div class="tile-detail"></div>
+          <div class="meter"><div class="meter-fill" style="background:var(--series-mem)"></div></div>
+        </article>
+        <article class="card tile" id="tile-disk">
+          <div class="tile-head">
+            <span class="tile-label"><span class="swatch" style="background:var(--series-disk)"></span>Opslag</span>
+            <span class="status"></span>
+          </div>
+          <div class="tile-value">–</div>
+          <div class="tile-detail"></div>
+          <div class="meter"><div class="meter-fill" style="background:var(--series-disk)"></div></div>
+        </article>
+      </section>
+
+      <section id="projects-section" hidden>
+        <div class="section-head"><h2>Projecten</h2></div>
+        <div class="card table-card">
+          <div class="table-scroll">
+            <table class="projects">
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Status</th>
+                  <th class="num">CPU</th>
+                  <th class="num">RAM</th>
+                  <th class="num">Verzoeken/min</th>
+                  <th class="num">5xx-fouten (1 uur)</th>
+                  <th class="num">Opslag</th>
+                  <th>Certificaat</th>
+                  <th>Laatste versie</th>
+                </tr>
+              </thead>
+              <tbody id="projects-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <div class="section-head sticky">
+        <h2>Verloop</h2>
+        <div class="ranges" role="group" aria-label="Periode">
+          <button type="button" data-range="1h">1 uur</button>
+          <button type="button" data-range="6h">6 uur</button>
+          <button type="button" data-range="24h">24 uur</button>
+          <button type="button" data-range="7d">7 dagen</button>
+          <button type="button" data-range="30d">30 dagen</button>
         </div>
       </div>
-    </section>
 
-    <div class="section-head sticky">
-      <h2>Verloop</h2>
-      <div class="ranges" role="group" aria-label="Periode">
-        <button type="button" data-range="1h">1 uur</button>
-        <button type="button" data-range="6h">6 uur</button>
-        <button type="button" data-range="24h">24 uur</button>
-        <button type="button" data-range="7d">7 dagen</button>
-        <button type="button" data-range="30d">30 dagen</button>
-      </div>
+      <section class="charts">
+        <h2 class="group-title" id="server-title" hidden>Server</h2>
+        <article class="card chart-card">
+          <div class="chart-title">
+            <h3><span class="swatch" style="background:var(--series-cpu)"></span>CPU-gebruik</h3>
+            <span class="stats" id="stats-cpu"></span>
+          </div>
+          <div class="chart-box"><canvas id="chart-cpu" aria-label="CPU-gebruik over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
+        </article>
+        <article class="card chart-card">
+          <div class="chart-title">
+            <h3><span class="swatch" style="background:var(--series-mem)"></span>RAM-gebruik</h3>
+            <span class="stats" id="stats-mem"></span>
+          </div>
+          <div class="chart-box"><canvas id="chart-mem" aria-label="RAM-gebruik over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
+        </article>
+        <article class="card chart-card">
+          <div class="chart-title">
+            <h3><span class="swatch" style="background:var(--series-disk)"></span>Opslaggebruik</h3>
+            <span class="stats" id="stats-disk"></span>
+          </div>
+          <div class="chart-box"><canvas id="chart-disk" aria-label="Opslaggebruik over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
+        </article>
+      </section>
+
+      <section class="charts project-charts" id="compare-charts" hidden>
+        <h2 class="group-title">Per project</h2>
+        <article class="card chart-card">
+          <div class="chart-title"><h3>CPU per project</h3></div>
+          <div class="legend"></div>
+          <div class="chart-box"><canvas id="compare-cpu" aria-label="CPU-gebruik per project over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
+        </article>
+        <article class="card chart-card">
+          <div class="chart-title"><h3>RAM per project</h3></div>
+          <div class="legend"></div>
+          <div class="chart-box"><canvas id="compare-mem" aria-label="RAM-gebruik per project over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
+        </article>
+        <article class="card chart-card">
+          <div class="chart-title"><h3>Verzoeken per minuut</h3></div>
+          <div class="legend"></div>
+          <div class="chart-box"><canvas id="compare-req" aria-label="Verzoeken per minuut per project over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
+        </article>
+      </section>
+
+      <p class="footer-info" id="footer-info"></p>
     </div>
 
-    <section class="charts">
-      <h2 class="group-title" id="server-title" hidden>Server</h2>
-      <article class="card chart-card">
-        <div class="chart-title">
-          <h3><span class="swatch" style="background:var(--series-cpu)"></span>CPU-gebruik</h3>
-          <span class="stats" id="stats-cpu"></span>
-        </div>
-        <div class="chart-box"><canvas id="chart-cpu" aria-label="CPU-gebruik over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
-      </article>
-      <article class="card chart-card">
-        <div class="chart-title">
-          <h3><span class="swatch" style="background:var(--series-mem)"></span>RAM-gebruik</h3>
-          <span class="stats" id="stats-mem"></span>
-        </div>
-        <div class="chart-box"><canvas id="chart-mem" aria-label="RAM-gebruik over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
-      </article>
-      <article class="card chart-card">
-        <div class="chart-title">
-          <h3><span class="swatch" style="background:var(--series-disk)"></span>Opslaggebruik</h3>
-          <span class="stats" id="stats-disk"></span>
-        </div>
-        <div class="chart-box"><canvas id="chart-disk" aria-label="Opslaggebruik over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
-      </article>
-    </section>
+    <!-- ========== Eén project ========== -->
+    <div id="view-project" hidden>
+      <div class="project-head">
+        <h2 id="p-title"></h2>
+        <div class="sub" id="p-sub"></div>
+      </div>
 
-    <section class="charts project-charts" id="project-charts" hidden>
-      <h2 class="group-title">Per project</h2>
-      <article class="card chart-card">
-        <div class="chart-title"><h3>CPU per project</h3></div>
-        <div class="legend"></div>
-        <div class="chart-box"><canvas id="pchart-cpu" aria-label="CPU-gebruik per project over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
-      </article>
-      <article class="card chart-card">
-        <div class="chart-title"><h3>RAM per project</h3></div>
-        <div class="legend"></div>
-        <div class="chart-box"><canvas id="pchart-mem" aria-label="RAM-gebruik per project over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
-      </article>
-      <article class="card chart-card">
-        <div class="chart-title"><h3>Verzoeken per minuut</h3></div>
-        <div class="legend"></div>
-        <div class="chart-box"><canvas id="pchart-req" aria-label="Verzoeken per minuut per project over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
-      </article>
-    </section>
+      <section class="tiles tiles-4" id="p-tiles"></section>
 
-    <p class="footer-info" id="footer-info"></p>
+      <div class="section-head sticky">
+        <h2>Verloop</h2>
+        <div class="ranges" role="group" aria-label="Periode">
+          <button type="button" data-range="1h">1 uur</button>
+          <button type="button" data-range="6h">6 uur</button>
+          <button type="button" data-range="24h">24 uur</button>
+          <button type="button" data-range="7d">7 dagen</button>
+          <button type="button" data-range="30d">30 dagen</button>
+        </div>
+      </div>
+
+      <section class="charts">
+        <article class="card chart-card">
+          <div class="chart-title"><h3>CPU-gebruik</h3><span class="stats" id="p-stats-cpu"></span></div>
+          <div class="chart-box"><canvas id="p-chart-cpu" aria-label="CPU-gebruik van dit project over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
+        </article>
+        <article class="card chart-card">
+          <div class="chart-title"><h3>RAM-gebruik</h3><span class="stats" id="p-stats-mem"></span></div>
+          <div class="chart-box"><canvas id="p-chart-mem" aria-label="RAM-gebruik van dit project over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
+        </article>
+        <article class="card chart-card">
+          <div class="chart-title"><h3>Verzoeken per minuut</h3><span class="stats" id="p-stats-req"></span></div>
+          <div class="chart-box"><canvas id="p-chart-req" aria-label="Verzoeken per minuut van dit project over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
+        </article>
+        <article class="card chart-card">
+          <div class="chart-title"><h3>5xx-fouten per minuut</h3><span class="stats" id="p-stats-err"></span></div>
+          <div class="chart-box"><canvas id="p-chart-err" aria-label="5xx-fouten per minuut van dit project over tijd" role="img"></canvas><div class="empty">Nog geen gegevens voor deze periode</div></div>
+        </article>
+      </section>
+    </div>
   </div>
 
   <script src="/static/chart.js"></script>

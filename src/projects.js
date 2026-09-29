@@ -48,6 +48,7 @@ function loadConfig(file) {
     type: TYPES.includes(p.type) ? p.type : 'static',
     domain: p.domain || null,
     url: p.url || (p.domain ? `https://${p.domain}/` : null),
+    healthUrlSet: !!p.url,
     dir: p.dir || null,
     pool: p.pool || null,
     services: [].concat(p.services || []).map((s) => (s.endsWith('.service') ? s : s + '.service')),
@@ -163,12 +164,14 @@ class LogTail {
 
 // ---------- Slow checks ----------
 
-async function checkHealth(url) {
+async function checkHealth(url, strict) {
   const started = Date.now();
   try {
     const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(10000) });
-    // Anything below 500 means the app answered; an API root returning 404 is normal
-    return { ok: res.status < 500, status: res.status, ms: Date.now() - started, checkedAt: Date.now() };
+    // On a dedicated health URL only 2xx/3xx is healthy. On the domain root anything
+    // below 500 means the app answered; an API root returning 404 is normal.
+    const ok = strict ? res.status < 400 : res.status < 500;
+    return { ok, status: res.status, ms: Date.now() - started, checkedAt: Date.now() };
   } catch (err) {
     const reason = err.name === 'TimeoutError' ? 'Time-out' : (err.cause && err.cause.code) || err.message;
     return { ok: false, status: null, ms: null, error: reason, checkedAt: Date.now() };
@@ -182,11 +185,58 @@ function checkCert(domain) {
       socket.end();
       if (!cert || !cert.valid_to) return resolve(null);
       const validTo = new Date(cert.valid_to).getTime();
-      resolve({ validTo, daysLeft: Math.floor((validTo - Date.now()) / (24 * HOUR)), trusted: socket.authorized });
+      const names = (cert.subjectaltname || '').split(',').map((s) => s.trim().replace(/^DNS:/, '')).filter(Boolean);
+      resolve({
+        validTo,
+        daysLeft: Math.floor((validTo - Date.now()) / (24 * HOUR)),
+        trusted: socket.authorized,
+        issuer: (cert.issuer && (cert.issuer.O || cert.issuer.CN)) || null,
+        names,
+      });
     });
     socket.on('error', () => resolve(null));
     socket.on('timeout', () => { socket.destroy(); resolve(null); });
   });
+}
+
+const RENEWAL_DIR = '/etc/letsencrypt/renewal';
+// apt installs certbot.timer, the snap package installs snap.certbot.renew.timer
+const CERTBOT_TIMERS = ['certbot.timer', 'snap.certbot.renew.timer'];
+
+/** Which certificates certbot manages, and whether its renewal timer runs. */
+async function certbotStatus() {
+  let lineages = null;
+  let error = null;
+  try {
+    lineages = fs.readdirSync(RENEWAL_DIR).filter((f) => f.endsWith('.conf')).map((f) => f.slice(0, -5));
+  } catch (err) {
+    error = err.code === 'ENOENT' ? 'Certbot niet gevonden op deze server' : `Geen toegang tot ${RENEWAL_DIR}`;
+  }
+
+  let timer = null;
+  for (const unit of CERTBOT_TIMERS) {
+    const { err, stdout } = await run('systemctl', ['show', unit, '--property=LoadState,ActiveState'], 10000);
+    if (err) continue;
+    const props = Object.fromEntries(stdout.trim().split('\n').map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
+    if (props.LoadState !== 'loaded') continue;
+    timer = { unit, active: props.ActiveState === 'active' };
+    break;
+  }
+  return { lineages, error, timer };
+}
+
+function autoRenewFor(cert, certbot) {
+  if (!cert) return null;
+  if (!certbot.lineages) return { state: 'unknown', reason: certbot.error };
+  // Certbot names a lineage after the first domain, with -0001 etc. for duplicates
+  const lineage = certbot.lineages.find((l) => cert.names.includes(l.replace(/-\d{4}$/, '')));
+  if (!lineage) {
+    const isLetsEncrypt = /let's encrypt/i.test(cert.issuer || '');
+    return { state: 'off', reason: isLetsEncrypt ? 'Geen certbot-configuratie voor dit domein' : `Uitgegeven door ${cert.issuer || 'onbekend'}, niet door certbot` };
+  }
+  if (!certbot.timer) return { state: 'off', lineage, reason: 'Geen certbot-timer gevonden' };
+  if (!certbot.timer.active) return { state: 'off', lineage, reason: `${certbot.timer.unit} staat uit` };
+  return { state: 'on', lineage };
 }
 
 function run(cmd, args, timeout) {
@@ -303,11 +353,15 @@ class ProjectMonitor {
   }
 
   async runChecks(kind) {
+    const certbot = kind === 'cert' ? await certbotStatus() : null;
     for (const p of this.projects) {
       const s = this.state.get(p.name);
       try {
-        if (kind === 'health' && p.url) s.health = await checkHealth(p.url);
-        if (kind === 'cert' && p.domain) s.cert = await checkCert(p.domain);
+        if (kind === 'health' && p.url) s.health = await checkHealth(p.url, p.healthUrlSet);
+        if (kind === 'cert' && p.domain) {
+          const cert = await checkCert(p.domain);
+          s.cert = cert && { ...cert, autoRenew: autoRenewFor(cert, certbot) };
+        }
         if (kind === 'disk' && p.dir) s.disk = { bytes: await diskUsage(p.dir), checkedAt: Date.now() };
         if (kind === 'git' && p.dir) s.git = await lastCommit(p.dir);
       } catch (err) {
@@ -363,6 +417,7 @@ class ProjectMonitor {
         label: p.label,
         type: p.type,
         domain: p.domain,
+        dir: p.dir,
         cpu: s.current.cpu == null ? null : round(s.current.cpu, 2),
         mem: s.current.mem,
         requestsPerMin: s.current.hasLog ? sum(lastMinute, 1) : null,
