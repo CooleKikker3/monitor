@@ -1,17 +1,11 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-
-const MINUTE = 60 * 1000;
+const { Series, round, avgOf, maxOf, MINUTE } = require('./series');
 
 // Row layout for stored samples (compact arrays keep the history file small):
 // [timestamp, cpuAvg, cpuMax, memPct, memUsed, diskPct, diskUsed, swapPct]
 const F = { t: 0, cpu: 1, cpuMax: 2, memPct: 3, memUsed: 4, diskPct: 5, diskUsed: 6, swapPct: 7 };
-
-function round(n, d = 1) {
-  const f = 10 ** d;
-  return Math.round(n * f) / f;
-}
 
 function cpuTimes() {
   let idle = 0;
@@ -61,52 +55,46 @@ function readDisk(diskPath) {
   }
 }
 
+function aggregate(rows, start) {
+  const avg = (i) => avgOf(rows, i);
+  return [
+    start,
+    round(avg(F.cpu)),
+    round(maxOf(rows, F.cpuMax)),
+    round(avg(F.memPct)),
+    Math.round(avg(F.memUsed)),
+    round(avg(F.diskPct)),
+    Math.round(avg(F.diskUsed)),
+    round(avg(F.swapPct)),
+  ];
+}
+
+function writeJsonAtomic(file, data) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data));
+  fs.renameSync(tmp, file);
+}
+
 class Collector {
   constructor({ dataDir, intervalSec = 5, retentionDays = 30, diskPath = '/' }) {
     this.file = path.join(dataDir, 'history.json');
-    this.dataDir = dataDir;
     this.intervalMs = Math.max(1, intervalSec) * 1000;
-    this.retentionMs = retentionDays * 24 * 60 * MINUTE;
     this.diskPath = diskPath;
-
-    this.recent = []; // raw samples, last hour
-    this.minutes = []; // per-minute aggregates, up to retention
-    this.bucket = null; // minute currently being aggregated
+    this.series = new Series({
+      aggregate,
+      retentionMs: retentionDays * 24 * 60 * MINUTE,
+      intervalMs: this.intervalMs,
+    });
     this.current = null;
     this.prevCpu = cpuTimes();
     this.dirty = false;
 
-    this.load();
-  }
-
-  load() {
     try {
-      const data = JSON.parse(fs.readFileSync(this.file, 'utf8'));
-      if (Array.isArray(data.minutes)) this.minutes = data.minutes;
-      this.prune();
+      this.series.load(JSON.parse(fs.readFileSync(this.file, 'utf8')).minutes);
     } catch {
       // No history yet
     }
-  }
-
-  save() {
-    if (!this.dirty) return;
-    fs.mkdirSync(this.dataDir, { recursive: true });
-    const tmp = this.file + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify({ version: 1, minutes: this.minutes }));
-    fs.renameSync(tmp, this.file);
-    this.dirty = false;
-  }
-
-  prune() {
-    const cutoff = Date.now() - this.retentionMs;
-    let i = 0;
-    while (i < this.minutes.length && this.minutes[i][F.t] < cutoff) i++;
-    if (i) this.minutes.splice(0, i);
-    const recentCutoff = Date.now() - 60 * MINUTE;
-    i = 0;
-    while (i < this.recent.length && this.recent[i][F.t] < recentCutoff) i++;
-    if (i) this.recent.splice(0, i);
   }
 
   sample() {
@@ -140,24 +128,7 @@ class Collector {
     };
 
     const row = [now, round(cpu), round(cpu), round(memPct), mem.used, round(disk.pct), disk.used, round(swapPct)];
-    this.recent.push(row);
-    this.addToMinute(row);
-    this.prune();
-  }
-
-  addToMinute(row) {
-    const minuteStart = Math.floor(row[F.t] / MINUTE) * MINUTE;
-    if (this.bucket && this.bucket.start !== minuteStart) this.flushMinute();
-    if (!this.bucket) this.bucket = { start: minuteStart, rows: [] };
-    this.bucket.rows.push(row);
-  }
-
-  flushMinute() {
-    const b = this.bucket;
-    this.bucket = null;
-    if (!b || !b.rows.length) return;
-    this.minutes.push(aggregate(b.rows, b.start));
-    this.dirty = true;
+    if (this.series.add(row)) this.dirty = true;
   }
 
   start() {
@@ -169,70 +140,23 @@ class Collector {
   stop() {
     clearInterval(this.timer);
     clearInterval(this.saveTimer);
-    this.flushMinute();
+    if (this.series.flush()) this.dirty = true;
     this.trySave();
   }
 
   trySave() {
+    if (!this.dirty) return;
     try {
-      this.save();
+      writeJsonAtomic(this.file, { version: 1, minutes: this.series.minutes });
+      this.dirty = false;
     } catch (err) {
       console.error('Kon historie niet opslaan:', err.message);
     }
   }
 
-  /** Returns history for a time range, downsampled to at most ~400 points. */
   history(rangeMs) {
-    const now = Date.now();
-    const from = now - rangeMs;
-
-    if (rangeMs <= 60 * MINUTE) {
-      return { bucketMs: this.intervalMs, points: withGaps(this.recent.filter((r) => r[F.t] >= from), this.intervalMs) };
-    }
-
-    const source = this.minutes.filter((r) => r[F.t] >= from);
-    // Include the minute in progress so the chart reaches "now"
-    if (this.bucket && this.bucket.rows.length) source.push(aggregate(this.bucket.rows, this.bucket.start));
-
-    const bucketMs = Math.max(MINUTE, Math.ceil(rangeMs / 400 / MINUTE) * MINUTE);
-    if (bucketMs === MINUTE) return { bucketMs, points: withGaps(source, bucketMs) };
-
-    const groups = new Map();
-    for (const r of source) {
-      const key = Math.floor(r[F.t] / bucketMs) * bucketMs;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(r);
-    }
-    const points = [...groups.entries()].map(([start, rows]) => aggregate(rows, start));
-    return { bucketMs, points: withGaps(points, bucketMs) };
+    return this.series.history(rangeMs);
   }
 }
 
-function aggregate(rows, start) {
-  const avg = (i) => rows.reduce((s, r) => s + r[i], 0) / rows.length;
-  const max = (i) => rows.reduce((m, r) => Math.max(m, r[i]), 0);
-  return [
-    start,
-    round(avg(F.cpu)),
-    round(max(F.cpuMax)),
-    round(avg(F.memPct)),
-    Math.round(avg(F.memUsed)),
-    round(avg(F.diskPct)),
-    Math.round(avg(F.diskUsed)),
-    round(avg(F.swapPct)),
-  ];
-}
-
-// Insert a null row where data is missing (server was down) so lines break there
-function withGaps(rows, stepMs) {
-  const out = [];
-  for (let i = 0; i < rows.length; i++) {
-    if (i > 0 && rows[i][F.t] - rows[i - 1][F.t] > stepMs * 2.5) {
-      out.push([rows[i - 1][F.t] + stepMs, null, null, null, null, null, null, null]);
-    }
-    out.push(rows[i]);
-  }
-  return out;
-}
-
-module.exports = { Collector, FIELDS: F };
+module.exports = { Collector, writeJsonAtomic };

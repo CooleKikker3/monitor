@@ -4,6 +4,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const express = require('express');
 const { Collector } = require('./collector');
+const { ProjectMonitor } = require('./projects');
 const { createAuth } = require('./auth');
 
 const env = process.env;
@@ -27,6 +28,14 @@ const collector = new Collector({
   diskPath: env.DISK_PATH || '/',
 });
 collector.start();
+
+const projectMonitor = new ProjectMonitor({
+  configFile: path.join(__dirname, '..', 'projects.json'),
+  dataDir: path.join(__dirname, '..', 'data'),
+  intervalSec: Number(env.SAMPLE_INTERVAL_SECONDS) || 5,
+  retentionDays: Number(env.RETENTION_DAYS) || 30,
+});
+projectMonitor.start();
 
 const auth = createAuth({
   user: env.MONITOR_USER,
@@ -84,6 +93,17 @@ app.get('/api/history', auth.requireApi, (req, res) => {
   res.json(collector.history(rangeMs));
 });
 
+app.get('/api/projects', auth.requireApi, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ projects: projectMonitor.current() });
+});
+
+app.get('/api/projects/history', auth.requireApi, (req, res) => {
+  const rangeMs = RANGES[req.query.range] || RANGES['24h'];
+  res.set('Cache-Control', 'no-store');
+  res.json({ projects: projectMonitor.history(rangeMs) });
+});
+
 const port = Number(env.PORT) || 3000;
 const host = env.HOST || '0.0.0.0';
 const server = app.listen(port, host, () => {
@@ -92,6 +112,7 @@ const server = app.listen(port, host, () => {
 
 function shutdown() {
   collector.stop();
+  projectMonitor.stop();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 2000).unref();
 }

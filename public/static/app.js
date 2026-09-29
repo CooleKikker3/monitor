@@ -123,6 +123,13 @@
     return { ticks, step };
   }
 
+  function timeTickLabel(v, i, ticks) {
+    const step = ticks.length > 1 ? ticks[1].value - ticks[0].value : HOUR;
+    if (step >= DAY) return fmtDay.format(v);
+    if (RANGE_MS[currentRange] > DAY) return fmtDayTime.format(v);
+    return fmtTime.format(v);
+  }
+
   const crosshair = {
     id: 'crosshair',
     afterDatasetsDraw(chart) {
@@ -201,12 +208,7 @@
               color: css('--muted'),
               maxRotation: 0,
               autoSkip: false,
-              callback: (v, i, ticks) => {
-                const step = ticks.length > 1 ? ticks[1].value - ticks[0].value : HOUR;
-                if (step >= DAY) return fmtDay.format(v);
-                if (RANGE_MS[currentRange] > DAY) return fmtDayTime.format(v);
-                return fmtTime.format(v);
-              },
+              callback: timeTickLabel,
             },
             afterBuildTicks: (scale) => { scale.ticks = timeTicks(scale.min, scale.max).ticks; },
           },
@@ -242,6 +244,7 @@
   function buildAll() {
     Object.keys(CHARTS).forEach(buildChart);
     if (lastHistory) render(lastHistory);
+    if (projectOrder.length) buildProjectCharts();
   }
 
   function render(history) {
@@ -279,6 +282,228 @@
       if (range !== currentRange) return;
       lastHistory = history;
       render(history);
+      loadProjectHistory();
+    } catch {
+      // Status indicator is driven by loadCurrent
+    }
+  }
+
+  // ---------- Projects ----------
+
+  // Row layout from /api/projects/history: [t, cpuPct, memBytes, requestsPerMin, errorsPerMin]
+  const PF = { t: 0, cpu: 1, mem: 2, req: 3, err: 4 };
+  const nf0 = new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 0 });
+  const nf2 = new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 2 });
+  const rtf = new Intl.RelativeTimeFormat('nl-NL', { numeric: 'auto' });
+  const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
+
+  let lastProjects = [];
+  // Color follows the project (its position in projects.json), never its rank
+  let projectOrder = [];
+  const projectColorVar = (name) => {
+    const i = projectOrder.indexOf(name);
+    return i >= 0 && i < 8 ? '--cat-' + (i + 1) : '--muted';
+  };
+  const projectLabel = (name) => (lastProjects.find((p) => p.name === name) || {}).label || name;
+
+  function ago(date) {
+    const diff = (new Date(date).getTime() - Date.now()) / 1000;
+    const abs = Math.abs(diff);
+    if (abs < 3600) return rtf.format(Math.round(diff / 60), 'minute');
+    if (abs < 86400) return rtf.format(Math.round(diff / 3600), 'hour');
+    return rtf.format(Math.round(diff / 86400), 'day');
+  }
+
+  const muted = '<span class="muted">–</span>';
+  const statusHtml = (level, text) => `<span class="status ${level}">${ICONS[level]}${esc(text)}</span>`;
+
+  function healthCell(p) {
+    if (!p.domain) return muted;
+    const h = p.health;
+    if (!h) return '<span class="muted">Wordt gecontroleerd…</span>';
+    if (h.ok) return statusHtml('good', 'Online') + `<div class="sub">${h.status} · ${nf0.format(h.ms)} ms</div>`;
+    return statusHtml('critical', 'Offline') + `<div class="sub">${esc(h.status || h.error || 'Geen antwoord')}</div>`;
+  }
+
+  function certCell(p) {
+    const c = p.cert;
+    if (!p.domain) return muted;
+    if (!c) return '<span class="muted">Onbekend</span>';
+    if (!c.trusted) return statusHtml('critical', 'Ongeldig');
+    if (c.daysLeft < 7) return statusHtml('critical', `Nog ${c.daysLeft} dagen`);
+    if (c.daysLeft < 14) return statusHtml('warning', `Nog ${c.daysLeft} dagen`);
+    return `Nog ${c.daysLeft} dagen`;
+  }
+
+  function renderProjectTable(projects) {
+    $('#projects-body').innerHTML = projects.map((p) => {
+      const errors = p.errors1h == null ? muted : p.errors1h > 0 ? statusHtml('warning', nf0.format(p.errors1h)) : '0';
+      const git = p.git
+        ? `<div class="commit" title="${esc(p.git.subject)}">${esc(p.git.subject)}</div><div class="sub">${esc(p.git.hash)} · ${esc(ago(p.git.date))}</div>`
+        : muted;
+      const domain = p.domain ? `<div class="sub"><a href="https://${esc(p.domain)}" target="_blank" rel="noopener">${esc(p.domain)}</a></div>` : '';
+      return `<tr>
+        <td><div class="name"><span class="swatch" style="background:var(${projectColorVar(p.name)})"></span>${esc(p.label)} <span class="badge">${esc(p.type)}</span></div>${domain}</td>
+        <td>${healthCell(p)}</td>
+        <td class="num">${p.cpu == null ? muted : nf2.format(p.cpu) + '%'}</td>
+        <td class="num">${p.mem == null ? muted : fmtBytes(p.mem)}</td>
+        <td class="num">${p.requestsPerMin == null ? muted : nf0.format(p.requestsPerMin)}</td>
+        <td class="num">${errors}</td>
+        <td class="num">${p.disk && p.disk.bytes != null ? fmtBytes(p.disk.bytes) : muted}</td>
+        <td>${certCell(p)}</td>
+        <td>${git}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function loadProjects() {
+    try {
+      const { projects } = await api('/api/projects');
+      const has = projects.length > 0;
+      $('#projects-section').hidden = !has;
+      $('#project-charts').hidden = !has;
+      $('#server-title').hidden = !has;
+      if (!has) return;
+      const orderChanged = projects.map((p) => p.name).join() !== projectOrder.join();
+      lastProjects = projects;
+      projectOrder = projects.map((p) => p.name);
+      if (orderChanged) buildProjectCharts();
+      renderProjectTable(projects);
+    } catch {
+      // Status indicator is driven by loadCurrent
+    }
+  }
+
+  const PCHARTS = {
+    cpu: { canvas: 'pchart-cpu', field: PF.cpu, suggestedMax: 5, tick: (v) => nf2.format(v) + '%', value: (v) => nf2.format(v) + '%' },
+    mem: { canvas: 'pchart-mem', field: PF.mem, suggestedMax: 64 * 1024 * 1024, bytes: true, tick: (v) => fmtBytes(v), value: (v) => fmtBytes(v) },
+    req: { canvas: 'pchart-req', field: PF.req, suggestedMax: 10, tick: (v) => nf0.format(v), value: (v) => nf1.format(v) + '/min' },
+  };
+  const pcharts = {};
+  let lastProjectHistory = null;
+
+  function buildProjectCharts() {
+    for (const [key, def] of Object.entries(PCHARTS)) {
+      const canvas = document.getElementById(def.canvas);
+      if (pcharts[key]) pcharts[key].destroy();
+
+      const legend = $('.legend', canvas.closest('.chart-card'));
+      legend.innerHTML = projectOrder.length > 1
+        ? projectOrder.map((n) => `<span><span class="swatch" style="background:var(${projectColorVar(n)})"></span>${esc(projectLabel(n))}</span>`).join('')
+        : '';
+
+      pcharts[key] = new Chart(canvas, {
+        type: 'line',
+        data: { datasets: projectOrder.map((name) => {
+          const color = css(projectColorVar(name));
+          return {
+            label: projectLabel(name),
+            data: [],
+            parsing: false,
+            borderColor: color,
+            backgroundColor: color,
+            borderWidth: 2,
+            tension: 0.25,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHoverBorderWidth: 2,
+            pointHoverBorderColor: css('--surface'),
+            pointHoverBackgroundColor: color,
+            spanGaps: false,
+          };
+        }) },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          interaction: { mode: 'index', intersect: false },
+          layout: { padding: { top: 4 } },
+          scales: {
+            x: {
+              type: 'linear',
+              grid: { display: false },
+              border: { color: css('--axis') },
+              ticks: { color: css('--muted'), maxRotation: 0, autoSkip: false, callback: timeTickLabel },
+              afterBuildTicks: (scale) => { scale.ticks = timeTicks(scale.min, scale.max).ticks; },
+            },
+            y: {
+              min: 0,
+              suggestedMax: def.suggestedMax,
+              grid: { color: css('--grid') },
+              border: { display: false },
+              ticks: { color: css('--muted'), maxTicksLimit: 5, callback: def.tick },
+              // Byte axes step in powers of two (16 MB, 32 MB, ...) instead of odd decimals
+              afterBuildTicks: def.bytes ? (scale) => {
+                let step = 1024 * 1024;
+                while (scale.max / step > 4) step *= 2;
+                scale.ticks = [];
+                for (let v = 0; v <= scale.max; v += step) scale.ticks.push({ value: v });
+              } : undefined,
+            },
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: css('--surface'),
+              titleColor: css('--text'),
+              bodyColor: css('--text-2'),
+              borderColor: css('--border'),
+              borderWidth: 1,
+              padding: 10,
+              boxWidth: 8,
+              boxHeight: 8,
+              boxPadding: 4,
+              filter: (item) => item.raw.y != null,
+              itemSort: (a, b) => b.raw.y - a.raw.y,
+              callbacks: {
+                title: (items) => fmtFull.format(items[0].raw.x),
+                label: (item) => item.dataset.label + ': ' + def.value(item.raw.y),
+                labelColor: (item) => ({ borderColor: item.dataset.borderColor, backgroundColor: item.dataset.borderColor, borderRadius: 2 }),
+              },
+            },
+          },
+        },
+        plugins: [crosshair],
+      });
+    }
+    if (lastProjectHistory) renderProjectHistory(lastProjectHistory);
+  }
+
+  function renderProjectHistory(list) {
+    const now = Date.now();
+    // Align every project on one set of timestamps so the index tooltip lines up
+    const times = [...new Set(list.flatMap((p) => p.points.map((r) => r[PF.t])))].sort((a, b) => a - b);
+    const byName = new Map(list.map((p) => [p.name, new Map(p.points.map((r) => [r[PF.t], r]))]));
+
+    for (const [key, def] of Object.entries(PCHARTS)) {
+      const chart = pcharts[key];
+      if (!chart) continue;
+      let any = false;
+      chart.data.datasets.forEach((ds, i) => {
+        const rows = byName.get(projectOrder[i]) || new Map();
+        ds.data = times.map((t) => {
+          const r = rows.get(t);
+          const y = r ? r[def.field] : null;
+          if (y != null) any = true;
+          return { x: t, y };
+        });
+      });
+      chart.options.scales.x.min = now - RANGE_MS[currentRange];
+      chart.options.scales.x.max = now;
+      chart.update('none');
+      $('.empty', chart.canvas.parentElement).style.display = any ? 'none' : 'grid';
+    }
+  }
+
+  async function loadProjectHistory() {
+    if (!projectOrder.length) return;
+    try {
+      const range = currentRange;
+      const { projects } = await api('/api/projects/history?range=' + range);
+      if (range !== currentRange) return;
+      lastProjectHistory = projects;
+      renderProjectHistory(projects);
     } catch {
       // Status indicator is driven by loadCurrent
     }
@@ -294,6 +519,7 @@
     });
     try { localStorage.setItem('monitor-range', range); } catch {}
     lastHistory = null;
+    lastProjectHistory = null;
     loadHistory();
     scheduleHistory();
   }
@@ -318,8 +544,9 @@
   try { saved = localStorage.getItem('monitor-range'); } catch {}
 
   buildAll();
-  loadCurrent().then(() => {
+  Promise.all([loadCurrent(), loadProjects()]).then(() => {
     setInterval(loadCurrent, intervalMs);
+    setInterval(loadProjects, intervalMs);
     selectRange(saved || '24h');
   });
 })();

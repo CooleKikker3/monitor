@@ -1,0 +1,20 @@
+[
+  {
+    "name": "upmanager",
+    "label": "Auto Reserveerapp-API",
+    "type": "laravel",
+    "domain": "autoapp.coenvink.com",
+    "dir": "/var/www/upmanager-api",
+    "pool": "upmanager",
+    "accessLog": "/var/log/nginx/upmanager.access.log"
+  },
+  {
+    "name": "monitor",
+    "label": "Servermonitor",
+    "type": "node",
+    "domain": "monitor.coenvink.com",
+    "dir": "/var/www/monitor",
+    "services": ["monitor"],
+    "accessLog": "/var/log/nginx/monitor.access.log"
+  }
+]

@@ -4,6 +4,7 @@ Lichtgewicht dashboard voor CPU-, RAM- en opslaggebruik van je server, met histo
 
 - Live waarden (elke 5 seconden) met status: Normaal / Hoog (≥ 75%) / Kritiek (≥ 90%)
 - Grafieken over 1 uur, 6 uur, 24 uur, 7 dagen en 30 dagen
+- Per project: CPU, RAM, verzoeken/min, 5xx-fouten, bereikbaarheid, certificaat, schijfruimte en laatste commit (zie "Projecten volgen" in [DEPLOY.md](DEPLOY.md))
 - Inloggen met vaste gegevens uit `.env`
 - Geen database: historie staat in `data/history.json` (per minuut, ± 3 MB bij 30 dagen)
 - Licht en donker thema (volgt je systeeminstelling)

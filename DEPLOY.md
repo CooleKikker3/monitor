@@ -214,6 +214,110 @@ Het script haalt de nieuwste code op, installeert de packages en herstart de ser
 stoppen schrijft de monitor zijn historie eerst weg, dus je verliest hooguit de minuut die
 nog bezig was. De grafiek laat op die plek een kleine onderbreking zien.
 
+# Projecten volgen
+
+De monitor kan per project laten zien:
+- CPU en RAM;
+- verzoeken per minuut en 5xx-fouten;
+- of het domein bereikbaar is;
+- hoe lang het certificaat nog geldig is;
+- hoeveel schijfruimte het project inneemt;
+- de laatst uitgerolde commit.
+
+Welke projecten er zijn, staat in `/var/www/monitor/projects.json`. Dat bestand staat niet in git.
+Je maakt het eenmalig op de server aan, zodat een `git pull` het nooit overschrijft.
+
+## Gegevens opzoeken
+
+Zoek per project drie dingen op:
+
+```bash
+ls /var/log/nginx/                          # naam van de access-log per project
+ps -eo cmd | grep "php-fpm: pool" | sort -u # namen van de PHP-FPM-pools
+systemctl list-units --type=service | grep -v '@'   # namen van eigen services (Node e.d.)
+```
+
+## Het bestand aanmaken
+
+```bash
+cp /var/www/monitor/projects.example.json /var/www/monitor/projects.json
+nano /var/www/monitor/projects.json
+```
+
+```json
+[
+  {
+    "name": "upmanager",
+    "label": "Auto Reserveerapp-API",
+    "type": "laravel",
+    "domain": "autoapp.coenvink.com",
+    "dir": "/var/www/upmanager-api",
+    "pool": "upmanager",
+    "accessLog": "/var/log/nginx/upmanager.access.log"
+  },
+  {
+    "name": "monitor",
+    "label": "Servermonitor",
+    "type": "node",
+    "domain": "monitor.coenvink.com",
+    "dir": "/var/www/monitor",
+    "services": ["monitor"],
+    "accessLog": "/var/log/nginx/monitor.access.log"
+  }
+]
+```
+
+| Veld | Betekenis |
+| --- | --- |
+| `name` | Korte naam: alleen letters, cijfers, `-` en `_`. De historie wordt onder deze naam bewaard. Verander hem dus niet. |
+| `label` | De naam in het dashboard |
+| `type` | `laravel`, `php`, `node` of `static`. Dit is alleen een label. Wat er gemeten wordt, hangt af van de velden hieronder. |
+| `domain` | Voor de bereikbaarheidscheck (elke minuut) en de certificaatcheck (elke 6 uur) |
+| `dir` | Voor de schijfruimte (elk uur) en de laatste commit (elke 5 minuten) |
+| `pool` | Naam van de PHP-FPM-pool: CPU en RAM van de PHP-processen |
+| `services` | Systemd-services van het project, zoals een Node-app of een Laravel-queueworker: CPU en RAM |
+| `accessLog` | Standaard `/var/log/nginx/<name>.access.log`. Vul het in als de naam afwijkt. |
+
+Laat een veld weg als het niet van toepassing is. Een statische site heeft bijvoorbeeld geen
+`pool` en geen `services`. De kleuren in de grafieken volgen de volgorde in dit bestand.
+
+Zet daarna de rechten goed en herstart:
+
+```bash
+chmod 644 /var/www/monitor/projects.json
+systemctl restart monitor
+journalctl -u monitor -n 20 --no-pager      # meldt een fout in projects.json
+```
+
+Na een wijziging in `projects.json` is altijd een `systemctl restart monitor` nodig.
+
+## Controleren of de monitor overal bij kan
+
+Draai de controles als `www-data`, de gebruiker waaronder de monitor draait:
+
+```bash
+sudo -u www-data head -n 1 /var/log/nginx/upmanager.access.log
+sudo -u www-data cat /sys/fs/cgroup/system.slice/monitor.service/memory.stat | head -n 2
+```
+
+Geven beide uitvoer, dan werkt het. Toont het dashboard een streepje (–) bij de verzoeken,
+dan kan `www-data` die log niet lezen, of klopt het pad in `accessLog` niet. Een streepje bij
+CPU en RAM betekent dat de pool- of servicenaam niet klopt.
+
+## Wat de cijfers betekenen
+
+* **CPU** is een percentage van de hele server, net als in de servergrafiek. `1%` op een VPS
+  met 4 cores is dus 4% van één core.
+* **RAM** is het eigen geheugen van het project. Voor PHP is dat per worker het RSS-geheugen
+  min het gedeelde deel. Opcache en gedeelde bibliotheken tellen dus niet mee, anders zouden
+  ze per worker dubbel worden geteld.
+* **PHP met `pm = ondemand`**: workers bestaan alleen als er verzoeken zijn. Bij een idle
+  project zie je dus 0 MB en 0%. Een worker die tussen twee metingen (5 seconden) start en weer
+  stopt, telt niet mee. De CPU van PHP is daarom een ondergrens.
+* **Verzoeken** zijn alle regels in de nginx-log, dus ook plaatjes, CSS en bots.
+* **Bereikbaar** betekent dat het domein met een statuscode onder de 500 antwoordt. Een 404 op
+  de hoofdpagina van een API is dus gewoon "Online".
+
 # Wat de monitor meet
 
 De monitor meet de hele VPS, niet alleen zijn eigen proces: de CPU van alle projecten samen,
