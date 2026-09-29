@@ -183,7 +183,7 @@ function checkCert(domain) {
     const socket = tls.connect({ host: domain, port: 443, servername: domain, rejectUnauthorized: false, timeout: 10000 }, () => {
       const cert = socket.getPeerCertificate();
       socket.end();
-      if (!cert || !cert.valid_to) return resolve(null);
+      if (!cert || !cert.valid_to) return resolve({ error: 'Geen certificaat ontvangen' });
       const validTo = new Date(cert.valid_to).getTime();
       const names = (cert.subjectaltname || '').split(',').map((s) => s.trim().replace(/^DNS:/, '')).filter(Boolean);
       resolve({
@@ -194,8 +194,8 @@ function checkCert(domain) {
         names,
       });
     });
-    socket.on('error', () => resolve(null));
-    socket.on('timeout', () => { socket.destroy(); resolve(null); });
+    socket.on('error', (err) => resolve({ error: err.code || err.message }));
+    socket.on('timeout', () => { socket.destroy(); resolve({ error: 'Time-out' }); });
   });
 }
 
@@ -352,15 +352,19 @@ class ProjectMonitor {
     this.prevProcs = procTicks;
   }
 
-  async runChecks(kind) {
+  async runChecks(kind, onlyFailed = false) {
     const certbot = kind === 'cert' ? await certbotStatus() : null;
     for (const p of this.projects) {
       const s = this.state.get(p.name);
+      if (onlyFailed && !(s.cert && s.cert.error)) continue;
       try {
         if (kind === 'health' && p.url) s.health = await checkHealth(p.url, p.healthUrlSet);
         if (kind === 'cert' && p.domain) {
           const cert = await checkCert(p.domain);
-          s.cert = cert && { ...cert, autoRenew: autoRenewFor(cert, certbot) };
+          s.cert = cert.error
+            ? { error: cert.error, checkedAt: Date.now() }
+            : { ...cert, autoRenew: autoRenewFor(cert, certbot), checkedAt: Date.now() };
+          if (cert.error) console.error(`Certificaat van ${p.domain} niet uitgelezen: ${cert.error}`);
         }
         if (kind === 'disk' && p.dir) s.disk = { bytes: await diskUsage(p.dir), checkedAt: Date.now() };
         if (kind === 'git' && p.dir) s.git = await lastCommit(p.dir);
@@ -380,6 +384,8 @@ class ProjectMonitor {
       setInterval(() => this.runChecks('git'), 5 * MINUTE),
       setInterval(() => this.runChecks('disk'), HOUR),
       setInterval(() => this.runChecks('cert'), 6 * HOUR),
+      // A failed certificate check shouldn't stay failed for 6 hours
+      setInterval(() => this.runChecks('cert', true), 5 * MINUTE),
     ];
     this.runChecks('health');
     this.runChecks('git');

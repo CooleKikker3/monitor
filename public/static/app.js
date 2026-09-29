@@ -429,7 +429,8 @@
       const git = p.git
         ? `<div class="commit" title="${esc(p.git.subject)}">${esc(p.git.subject)}</div><div class="sub">${esc(p.git.hash)} · ${esc(ago(p.git.date))}</div>`
         : MUTED;
-      const cert = !p.domain ? MUTED : !p.cert ? '<span class="muted">Onbekend</span>'
+      const cert = !p.domain ? MUTED : !p.cert ? '<span class="muted">Wordt gecontroleerd…</span>'
+        : p.cert.error ? statusHtml('warning', 'Controle mislukt', p.cert.error) + `<div class="sub">${esc(p.cert.error)}</div>`
         : `${certDays(p.cert)}<div class="sub">${autoRenewHtml(p.cert)}</div>`;
       return `<tr>
         <td>
@@ -505,6 +506,21 @@
     </article>`;
   }
 
+  function certTile(p) {
+    const c = p.cert;
+    if (!p.domain) return tile('Certificaat', '–', 'geen domein');
+    if (!c) return tile('Certificaat', '<span class="muted">…</span>', 'wordt gecontroleerd');
+    if (c.error) {
+      return tile('Certificaat', '–', `controle mislukt: ${esc(c.error)}<div class="tile-line muted">wordt elke 5 minuten opnieuw geprobeerd</div>`,
+        statusHtml('warning', 'Mislukt'));
+    }
+    const alert = !c.trusted || c.daysLeft < 14
+      ? statusHtml(c.daysLeft < 7 || !c.trusted ? 'critical' : 'warning', c.trusted ? 'Verloopt' : 'Ongeldig')
+      : '';
+    return tile('Certificaat', bigValue(`${c.daysLeft} dagen`),
+      `geldig tot ${esc(fmtDate.format(c.validTo))}<div class="tile-line">${autoRenewHtml(c)}</div>`, alert);
+  }
+
   function renderProjectTiles(p) {
     $('#p-title').innerHTML = `<span class="swatch" style="background:var(${colorVarFor(p.name)})"></span>${esc(p.label)} <span class="badge">${esc(p.type)}</span>`;
     $('#p-sub').innerHTML = [
@@ -530,10 +546,7 @@
         p.errors1h > 0 ? statusHtml('warning', 'Let op') : ''),
       tile('Opslag', p.disk && p.disk.bytes != null ? bigValue(fmtBytes(p.disk.bytes)) : '–',
         esc(p.disk ? 'gemeten ' + ago(p.disk.checkedAt) : 'wordt gemeten…')),
-      tile('Certificaat',
-        !p.cert ? '–' : bigValue(`${p.cert.daysLeft} dagen`),
-        !p.cert ? esc(p.domain ? 'onbekend' : 'geen domein') : `geldig tot ${esc(fmtDate.format(p.cert.validTo))}<div class="tile-line">${autoRenewHtml(p.cert)}</div>`,
-        p.cert && (!p.cert.trusted || p.cert.daysLeft < 14) ? statusHtml(p.cert.daysLeft < 7 || !p.cert.trusted ? 'critical' : 'warning', p.cert.trusted ? 'Verloopt' : 'Ongeldig') : ''),
+      certTile(p),
       tile('Laatste versie',
         p.git ? `<span class="commit-title" title="${esc(p.git.subject)}">${esc(p.git.subject)}</span>` : '–',
         p.git ? `${esc(p.git.hash)} · ${esc(ago(p.git.date))}` : ''),
